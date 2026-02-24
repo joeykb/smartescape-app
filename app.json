@@ -1,5 +1,6 @@
 {
   "expo": {
+    "owner": "peptide-app",
     "name": "smartescape-app",
     "slug": "smartescape-app",
     "version": "1.0.0",
@@ -10,10 +11,19 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#000000"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.smartescape.monitor",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "processing",
+          "fetch"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -46,7 +56,7 @@
         "origin": false
       },
       "eas": {
-        "projectId": ""
+        "projectId": "cd85b0f9-78cf-4453-a585-f00ae430d2d2"
       }
     }
   }

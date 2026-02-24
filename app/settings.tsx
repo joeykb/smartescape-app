@@ -14,6 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 GoogleSignin.configure({
     webClientId: GOOGLE_WEB_CLIENT_ID,
+    iosClientId: '234622472801-hpn7gvvl127odbifdalm8uked1bhgjee.apps.googleusercontent.com',
     scopes: ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.send'],
     offlineAccess: true,
 });
