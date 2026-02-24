@@ -1,6 +1,6 @@
 {
   "expo": {
-    "owner": "peptide-app",
+    "owner": "app-dev",
     "name": "smartescape-app",
     "slug": "smartescape-app",
     "version": "1.0.0",
@@ -22,6 +22,13 @@
         "UIBackgroundModes": [
           "processing",
           "fetch"
+        ],
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.234622472801-hpn7gvvl127odbifdalm8uked1bhgjee"
+            ]
+          }
         ]
       }
     },
@@ -42,6 +49,7 @@
     "plugins": [
       "expo-router",
       "@react-native-google-signin/google-signin",
+      "expo-background-task",
       [
         "expo-notifications",
         {
