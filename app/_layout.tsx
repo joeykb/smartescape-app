@@ -2,8 +2,12 @@ import '../global.css'; // NativeWind setup
 import { Tabs, router } from 'expo-router';
 import { Home, Bell, Settings } from 'lucide-react-native';
 import { useEffect } from 'react';
-import { addNotificationResponseListener } from '../src/services/pushNotifications';
+import * as Notifications from 'expo-notifications';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import { useAuthStore } from '../src/store/authStore';
+import { useNotificationStore } from '../src/store/notificationStore';
+import { markMessageAsRead, archiveMessage } from '../src/api/gmail';
+import { withTokenRefresh } from '../src/api/apiClient';
 
 export default function RootLayout() {
     useEffect(() => {
@@ -20,14 +24,66 @@ export default function RootLayout() {
         init();
     }, []);
 
-    // Handle notification tap → deep link to feed with system filter
+    // Register notification action categories (Acknowledge / Archive buttons)
     useEffect(() => {
-        const cleanup = addNotificationResponseListener((systemId, _status) => {
-            // Navigate to the alerts feed filtered by this system (consistent with dashboard)
-            router.push(`/feed?systemId=${systemId}`);
+        Notifications.setNotificationCategoryAsync('SMARTESCAPE_ALERT', [
+            {
+                identifier: 'ACKNOWLEDGE',
+                buttonTitle: '✓ Acknowledge',
+                options: { opensAppToForeground: false },
+            },
+            {
+                identifier: 'ARCHIVE',
+                buttonTitle: 'Archive',
+                options: { opensAppToForeground: false, isDestructive: true },
+            },
+        ]);
+    }, []);
+
+    // Handle notification tap + action buttons
+    useEffect(() => {
+        const subscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
+            const actionId = response.actionIdentifier;
+            const data = response.notification.request.content.data;
+            const messageId = data?.messageId as string | undefined;
+            const systemId = data?.systemId as string | undefined;
+
+            // Default tap → navigate to feed
+            if (actionId === Notifications.DEFAULT_ACTION_IDENTIFIER) {
+                if (systemId) {
+                    router.push(`/feed?systemId=${systemId}`);
+                }
+                return;
+            }
+
+            // Action buttons → run Gmail API in background
+            const { accessToken } = useAuthStore.getState();
+            if (!accessToken || !messageId) return;
+
+            try {
+                if (actionId === 'ACKNOWLEDGE') {
+                    const success = await withTokenRefresh(() =>
+                        markMessageAsRead(useAuthStore.getState().accessToken!, messageId)
+                    );
+                    if (success) {
+                        useNotificationStore.getState().markAsRead(messageId);
+                        console.log('[Push Action] Acknowledged:', messageId);
+                    }
+                } else if (actionId === 'ARCHIVE') {
+                    const success = await withTokenRefresh(() =>
+                        archiveMessage(useAuthStore.getState().accessToken!, messageId)
+                    );
+                    if (success) {
+                        useNotificationStore.getState().markArchived(messageId);
+                        console.log('[Push Action] Archived:', messageId);
+                    }
+                }
+            } catch (err) {
+                console.error('[Push Action] Failed:', err);
+            }
         });
 
-        return cleanup;
+        return () => subscription.remove();
     }, []);
 
     return (
