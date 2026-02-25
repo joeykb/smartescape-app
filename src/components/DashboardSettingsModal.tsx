@@ -14,7 +14,7 @@ const cardIcons: Record<string, string> = {
 };
 
 export function DashboardSettingsModal({ visible, onClose }: DashboardSettingsModalProps) {
-    const { cards, setCardVisibility, moveCard, resetDefaults } = useDashboardPrefsStore();
+    const { cards, maxActiveAlerts, setCardVisibility, moveCard, setMaxActiveAlerts, resetDefaults } = useDashboardPrefsStore();
 
     return (
         <Modal
@@ -61,6 +61,33 @@ export function DashboardSettingsModal({ visible, onClose }: DashboardSettingsMo
                             onMoveDown={() => moveCard(card.id, 'down')}
                         />
                     ))}
+
+                    {/* Max active alerts */}
+                    <View className="flex-row items-center justify-between py-4 border-b border-gray-800/50">
+                        <View className="flex-1">
+                            <Text className="text-white font-bold text-base">Max Active Alerts</Text>
+                            <Text className="text-gray-500 text-xs mt-0.5">Shown on dashboard</Text>
+                        </View>
+                        <View className="flex-row items-center" style={{ gap: 12 }}>
+                            <TouchableOpacity
+                                onPress={() => setMaxActiveAlerts(Math.max(3, maxActiveAlerts - 1))}
+                                disabled={maxActiveAlerts <= 3}
+                                className="w-8 h-8 rounded-lg bg-gray-800 items-center justify-center"
+                                style={{ opacity: maxActiveAlerts <= 3 ? 0.3 : 1 }}
+                            >
+                                <Text className="text-white font-black text-lg">−</Text>
+                            </TouchableOpacity>
+                            <Text className="text-white font-black text-lg w-8 text-center">{maxActiveAlerts}</Text>
+                            <TouchableOpacity
+                                onPress={() => setMaxActiveAlerts(Math.min(20, maxActiveAlerts + 1))}
+                                disabled={maxActiveAlerts >= 20}
+                                className="w-8 h-8 rounded-lg bg-gray-800 items-center justify-center"
+                                style={{ opacity: maxActiveAlerts >= 20 ? 0.3 : 1 }}
+                            >
+                                <Text className="text-white font-black text-lg">+</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
 
                     {/* Reset */}
                     <TouchableOpacity

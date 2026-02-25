@@ -5,6 +5,7 @@ import { NotificationRow } from '../../src/components/NotificationRow';
 import { useNotificationStore } from '../../src/store/notificationStore';
 import { useLocalSearchParams, router } from 'expo-router';
 import { ArrowLeft, MapPin, Clock, Activity } from 'lucide-react-native';
+import { STATUS_COLORS } from '../../src/constants/statusTheme';
 
 export default function SystemDetail() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -13,15 +14,7 @@ export default function SystemDetail() {
     const system = systems.find((s) => s.id === id);
     const systemNotifications = alertHistory.filter((n) => n.systemId === id);
 
-    const statusColors: Record<string, string> = {
-        ALERT: '#ef4444',
-        OFFLINE: '#ef4444',
-        WARNING: '#f59e0b',
-        INFO: '#3b82f6',
-        HEALTHY: '#10b981',
-    };
-
-    const statusColor = statusColors[system?.status || 'INFO'] || '#3b82f6';
+    const statusColor = STATUS_COLORS[system?.status || 'INFO'] || '#3b82f6';
 
     return (
         <View className="flex-1 bg-black">

@@ -1,68 +1,75 @@
-import { View, FlatList, Text, TouchableOpacity, ActivityIndicator, RefreshControl, Animated } from 'react-native';
+import { View, FlatList, Text, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '../src/components/Header';
 import { SystemCard } from '../src/components/SystemCard';
 import { DashboardSettingsModal } from '../src/components/DashboardSettingsModal';
+import { ActiveAlertCard } from '../src/components/ActiveAlertCard';
 import { useAuthStore } from '../src/store/authStore';
 import { useNotificationStore } from '../src/store/notificationStore';
 import { useDashboardPrefsStore } from '../src/store/dashboardPrefsStore';
-import { fetchGmailMessages } from '../src/api/gmail';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { markMessageAsRead, archiveMessage } from '../src/api/gmail';
+import { fetchAndStoreNotifications, withTokenRefresh } from '../src/api/apiClient';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw, ShieldOff, PenSquare, AlertCircle, TrendingUp, BarChart3, Activity, Clock, SlidersHorizontal } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { Config } from '../src/constants/config';
+import ReAnimated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withRepeat,
+    withSequence,
+    withTiming,
+} from 'react-native-reanimated';
 
 export default function Dashboard() {
-    const { accessToken, userInfo, refreshToken } = useAuthStore();
-    const { systems, liveNotifications, alertHistory, isLoading, lastFetchedAt, setNotifications, setLoading } = useNotificationStore();
-    const { cards } = useDashboardPrefsStore();
-    const [autoRefreshSeconds, setAutoRefreshSeconds] = useState(60);
+    const { accessToken, userInfo } = useAuthStore();
+    const { systems, liveNotifications, alertHistory, isLoading, lastFetchedAt, setLoading, markAsRead, markArchived } = useNotificationStore();
+    const { cards, maxActiveAlerts } = useDashboardPrefsStore();
+    const [autoRefreshSeconds, setAutoRefreshSeconds] = useState<number>(Config.AUTO_REFRESH_SECONDS);
     const [settingsOpen, setSettingsOpen] = useState(false);
-    const pulseAnim = useRef(new Animated.Value(1)).current;
+    const pulseOpacity = useSharedValue(1);
 
-    // Pulse animation
+    // Pulse animation — runs on UI thread via Reanimated
     useEffect(() => {
         const critCount = systems.filter(s => s.status === 'ALERT' || s.status === 'OFFLINE').length;
         if (critCount > 0) {
-            const pulse = Animated.loop(
-                Animated.sequence([
-                    Animated.timing(pulseAnim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
-                    Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-                ])
+            pulseOpacity.value = withRepeat(
+                withSequence(
+                    withTiming(0.3, { duration: 800 }),
+                    withTiming(1, { duration: 800 }),
+                ),
+                -1,
             );
-            pulse.start();
-            return () => pulse.stop();
-        } else { pulseAnim.setValue(1); }
+        } else {
+            pulseOpacity.value = 1;
+        }
     }, [systems]);
+
+    const pulseStyle = useAnimatedStyle(() => ({
+        opacity: pulseOpacity.value,
+    }));
 
     // Auto-refresh
     useEffect(() => {
         if (!accessToken) return;
         const interval = setInterval(() => {
             setAutoRefreshSeconds((prev) => {
-                if (prev <= 1) { loadData(); return 60; }
+                if (prev <= 1) { loadData(); return Config.AUTO_REFRESH_SECONDS; }
                 return prev - 1;
             });
         }, 1000);
         return () => clearInterval(interval);
     }, [accessToken]);
 
-    const loadData = useCallback(async () => {
-        let token = accessToken;
-        if (!token) return;
+    const loadData = useCallback(async (manual = false) => {
+        if (!accessToken) return;
         try {
-            setLoading(true);
-            const data = await fetchGmailMessages(token);
-            setNotifications(data);
-            setAutoRefreshSeconds(60);
+            if (manual) setLoading(true);
+            await fetchAndStoreNotifications();
+            setAutoRefreshSeconds(Config.AUTO_REFRESH_SECONDS);
         } catch (e: any) {
-            if (e.message?.includes('401')) {
-                const freshToken = await refreshToken();
-                if (freshToken) {
-                    try { const data = await fetchGmailMessages(freshToken); setNotifications(data); }
-                    catch (retryErr) { console.error('[Dashboard] Retry failed:', retryErr); }
-                }
-            } else { console.error('[Dashboard] Failed to fetch:', e); }
-        } finally { setLoading(false); }
+            console.error('[Dashboard] Failed to fetch:', e);
+        } finally { if (manual) setLoading(false); }
     }, [accessToken]);
 
     useEffect(() => { loadData(); }, [loadData]);
@@ -81,8 +88,36 @@ export default function Dashboard() {
     }, [alertHistory]);
 
     const activeAlerts = useMemo(() => {
-        return liveNotifications.filter(n => n.status === 'ALERT' || n.status === 'OFFLINE' || n.status === 'WARNING');
-    }, [liveNotifications]);
+        return alertHistory.filter(n => !n.isRead && !n.isArchived && (n.status === 'ALERT' || n.status === 'OFFLINE' || n.status === 'WARNING'));
+    }, [alertHistory]);
+
+    const handleAcknowledge = useCallback(async (messageId: string) => {
+        if (!accessToken) return;
+        markAsRead(messageId);
+        await withTokenRefresh((token) => markMessageAsRead(token, messageId));
+        loadData();
+    }, [accessToken, loadData, markAsRead]);
+
+    const handleAcknowledgeAll = useCallback(async () => {
+        if (!accessToken) return;
+        // Optimistic update
+        for (const alert of activeAlerts) { markAsRead(alert.id); }
+        // Parallel API calls with error resilience
+        const results = await Promise.allSettled(
+            activeAlerts.map((alert) => withTokenRefresh((token) => markMessageAsRead(token, alert.id)))
+        );
+        results.filter(r => r.status === 'rejected').forEach(r => {
+            console.error('[Dashboard] Ack failed:', (r as PromiseRejectedResult).reason);
+        });
+        loadData();
+    }, [accessToken, activeAlerts, loadData, markAsRead]);
+
+    const handleArchive = useCallback(async (messageId: string) => {
+        if (!accessToken) return;
+        markArchived(messageId);
+        await withTokenRefresh((token) => archiveMessage(token, messageId));
+        loadData();
+    }, [accessToken, loadData, markArchived]);
 
     if (!accessToken) {
         return (
@@ -128,7 +163,7 @@ export default function Dashboard() {
                     data={sections}
                     keyExtractor={(item) => item.key}
                     contentContainerStyle={{ paddingBottom: 24 }}
-                    refreshControl={<RefreshControl refreshing={isLoading} onRefresh={loadData} tintColor="#10b981" />}
+                    refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => loadData(true)} tintColor="#10b981" />}
                     renderItem={({ item }) => {
                         // === Welcome Header ===
                         if (item.key === 'header') {
@@ -139,9 +174,9 @@ export default function Dashboard() {
                                             <Text className="text-white text-xl font-bold">{greeting}, {firstName}</Text>
                                             {alertCount > 0 ? (
                                                 <View className="flex-row items-center mt-1">
-                                                    <Animated.View style={{ opacity: pulseAnim }}>
+                                                    <ReAnimated.View style={pulseStyle}>
                                                         <AlertCircle color="#ef4444" size={14} />
-                                                    </Animated.View>
+                                                    </ReAnimated.View>
                                                     <Text className="text-red-400 text-sm ml-1.5">
                                                         {alertCount} system{alertCount !== 1 ? 's' : ''} need{alertCount === 1 ? 's' : ''} attention
                                                     </Text>
@@ -155,7 +190,7 @@ export default function Dashboard() {
                                                 <PenSquare color="#000" size={13} />
                                                 <Text className="text-black font-black text-xs ml-1 tracking-wider">SEND</Text>
                                             </TouchableOpacity>
-                                            <TouchableOpacity onPress={loadData} disabled={isLoading}>
+                                            <TouchableOpacity onPress={() => loadData(true)} disabled={isLoading}>
                                                 {isLoading ? (
                                                     <ActivityIndicator size="small" color="#10b981" />
                                                 ) : (
@@ -174,44 +209,14 @@ export default function Dashboard() {
                         // === Active Alerts Card ===
                         if (item.key === 'active-alerts') {
                             return (
-                                <View className="mx-4 mt-4 p-4 rounded-xl border border-gray-800 bg-gray-900/60">
-                                    <View className="flex-row items-center justify-between mb-3">
-                                        <View className="flex-row items-center">
-                                            <AlertCircle color="#ef4444" size={16} style={{ marginRight: 8 }} />
-                                            <Text className="text-white font-black text-sm tracking-wider">ACTIVE ALERTS</Text>
-                                        </View>
-                                        <TouchableOpacity onPress={() => router.push('/feed')}>
-                                            <Text className="text-emerald-500 text-xs font-bold tracking-wider">VIEW ALL →</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                    {activeAlerts.length > 0 ? (
-                                        <>
-                                            {activeAlerts.slice(0, 4).map((alert, index) => (
-                                                <View key={alert.id} className={`flex-row items-center py-2.5 ${index > 0 ? 'border-t border-gray-800/50' : ''}`}>
-                                                    <View className="w-2 h-2 rounded-full" style={{ backgroundColor: alert.status === 'WARNING' ? '#f59e0b' : '#ef4444', marginRight: 10 }} />
-                                                    <View className="flex-1">
-                                                        <View className="flex-row items-center">
-                                                            <Text className="text-white text-sm font-bold">{alert.systemId}</Text>
-                                                            {(alert.count || 1) > 1 && <Text className="text-gray-500 text-xs ml-1.5">×{alert.count}</Text>}
-                                                        </View>
-                                                        <Text className="text-gray-500 text-xs mt-0.5" numberOfLines={1}>{alert.message}</Text>
-                                                    </View>
-                                                    <View className="px-2 py-0.5 rounded-sm" style={{ backgroundColor: (alert.status === 'WARNING' ? '#f59e0b' : '#ef4444') + '20' }}>
-                                                        <Text style={{ color: alert.status === 'WARNING' ? '#f59e0b' : '#ef4444' }} className="text-xs font-black tracking-wider">{alert.status}</Text>
-                                                    </View>
-                                                </View>
-                                            ))}
-                                            {activeAlerts.length > 4 && (
-                                                <Text className="text-gray-600 text-xs mt-2 text-center">+{activeAlerts.length - 4} more</Text>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <View className="py-4 items-center">
-                                            <Text className="text-emerald-500 font-bold text-sm">✓ No active alerts</Text>
-                                            <Text className="text-gray-600 text-xs mt-1">All systems operating normally</Text>
-                                        </View>
-                                    )}
-                                </View>
+                                <ActiveAlertCard
+                                    alerts={activeAlerts}
+                                    maxAlerts={maxActiveAlerts}
+                                    onAcknowledge={handleAcknowledge}
+                                    onArchive={handleArchive}
+                                    onAcknowledgeAll={handleAcknowledgeAll}
+                                    onViewAll={() => router.push('/feed')}
+                                />
                             );
                         }
 
@@ -283,7 +288,7 @@ export default function Dashboard() {
                         if ((item as any).system) {
                             return (
                                 <View className="px-4">
-                                    <SystemCard system={(item as any).system} onPress={() => router.push(`/system/${(item as any).system.id}`)} />
+                                    <SystemCard system={(item as any).system} onPress={() => router.push(`/feed?systemId=${(item as any).system.id}`)} />
                                 </View>
                             );
                         }

@@ -4,21 +4,16 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchGmailMessages } from '../api/gmail';
 import { Notification } from '../types';
+import { Config } from '../constants/config';
+import { configureNotificationHandler } from './notificationConfig';
 
-const BACKGROUND_TASK_NAME = 'SMARTESCAPE_GMAIL_POLL';
-const LAST_SEEN_KEY = 'smartescape-last-seen-notification-id';
+const BACKGROUND_TASK_NAME = Config.BACKGROUND_TASK_NAME;
+const LAST_SEEN_KEY = Config.STORAGE_KEYS.LAST_SEEN_NOTIFICATION;
 
 /**
- * Configure notification handler (how notifications appear when app is foregrounded).
+ * Configure notification handler (single source of truth).
  */
-Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-    }),
-});
+configureNotificationHandler();
 
 /**
  * Define the background task.

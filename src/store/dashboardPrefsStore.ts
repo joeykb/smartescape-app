@@ -12,8 +12,10 @@ export interface DashboardCardConfig {
 
 interface DashboardPrefsState {
     cards: DashboardCardConfig[];
+    maxActiveAlerts: number;
     setCardVisibility: (id: DashboardCardId, visible: boolean) => void;
     moveCard: (id: DashboardCardId, direction: 'up' | 'down') => void;
+    setMaxActiveAlerts: (count: number) => void;
     resetDefaults: () => void;
 }
 
@@ -27,6 +29,7 @@ export const useDashboardPrefsStore = create<DashboardPrefsState>()(
     persist(
         (set, get) => ({
             cards: [...DEFAULT_CARDS],
+            maxActiveAlerts: 5,
 
             setCardVisibility: (id, visible) => {
                 set({
@@ -48,7 +51,9 @@ export const useDashboardPrefsStore = create<DashboardPrefsState>()(
                 set({ cards });
             },
 
-            resetDefaults: () => set({ cards: [...DEFAULT_CARDS] }),
+            setMaxActiveAlerts: (count) => set({ maxActiveAlerts: count }),
+
+            resetDefaults: () => set({ cards: [...DEFAULT_CARDS], maxActiveAlerts: 5 }),
         }),
         {
             name: 'smartescape-dashboard-prefs',

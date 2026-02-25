@@ -16,6 +16,8 @@ interface NotificationState {
 
     // Actions
     setNotifications: (notifications: Notification[]) => void;
+    markAsRead: (id: string) => void;
+    markArchived: (id: string) => void;
     setLoading: (loading: boolean) => void;
     clearHistory: () => void;
 }
@@ -52,13 +54,29 @@ function deduplicateNotifications(notifications: Notification[]): Notification[]
  * Uses notification ID to prevent duplicates.
  */
 function mergeIntoHistory(existing: Notification[], incoming: Notification[]): Notification[] {
-    const seen = new Set(existing.map(n => n.id));
-    const merged = [...existing];
+    const incomingMap = new Map(incoming.map(n => [n.id, n]));
+    const seen = new Set<string>();
 
+    // Update existing records with fresh data, and add new ones
+    const merged: Notification[] = [];
+
+    // First, update existing history entries with fresh data
+    for (const n of existing) {
+        const fresh = incomingMap.get(n.id);
+        if (fresh) {
+            // Update with latest data (especially isRead status)
+            merged.push({ ...n, ...fresh });
+            seen.add(n.id);
+        } else {
+            merged.push(n);
+            seen.add(n.id);
+        }
+    }
+
+    // Then add any new notifications we haven't seen
     for (const n of incoming) {
         if (!seen.has(n.id)) {
             merged.push(n);
-            seen.add(n.id);
         }
     }
 
@@ -70,6 +88,7 @@ function mergeIntoHistory(existing: Notification[], incoming: Notification[]): N
 
 /**
  * Derives System objects from a list of Notifications.
+ * Only unread (unacknowledged) alerts affect the system's severity status.
  */
 function deriveSystemsFromNotifications(notifications: Notification[]): System[] {
     const systemMap = new Map<string, System>();
@@ -82,20 +101,26 @@ function deriveSystemsFromNotifications(notifications: Notification[]): System[]
         HEALTHY: 0,
     };
 
+    // First pass: collect all systems and their latest seen time
     for (const n of notifications) {
         const existing = systemMap.get(n.systemId);
-
-        if (!existing || severityOrder[n.status] > severityOrder[existing.status]) {
+        if (!existing) {
             systemMap.set(n.systemId, {
                 id: n.systemId,
-                status: n.status,
+                status: 'HEALTHY',
                 lastSeen: n.timestamp,
             });
         } else if (new Date(n.timestamp) > new Date(existing.lastSeen)) {
-            systemMap.set(n.systemId, {
-                ...existing,
-                lastSeen: n.timestamp,
-            });
+            systemMap.set(n.systemId, { ...existing, lastSeen: n.timestamp });
+        }
+    }
+
+    // Second pass: determine status from unread alerts only
+    for (const n of notifications) {
+        if (n.isRead) continue; // Acknowledged alerts don't affect status
+        const existing = systemMap.get(n.systemId)!;
+        if (severityOrder[n.status] > severityOrder[existing.status]) {
+            systemMap.set(n.systemId, { ...existing, status: n.status });
         }
     }
 
@@ -125,6 +150,27 @@ export const useNotificationStore = create<NotificationState>()(
                     systems: deriveSystemsFromNotifications(rawNotifications),
                     alertHistory: updatedHistory,
                     lastFetchedAt: new Date().toISOString(),
+                });
+            },
+
+            markAsRead: (id) => {
+                const { alertHistory, liveNotifications } = get();
+                set({
+                    alertHistory: alertHistory.map(n =>
+                        n.id === id ? { ...n, isRead: true } : n
+                    ),
+                    liveNotifications: liveNotifications.map(n =>
+                        n.id === id ? { ...n, isRead: true } : n
+                    ),
+                });
+            },
+
+            markArchived: (id) => {
+                const { alertHistory } = get();
+                set({
+                    alertHistory: alertHistory.map(n =>
+                        n.id === id ? { ...n, isArchived: true } : n
+                    ),
                 });
             },
 

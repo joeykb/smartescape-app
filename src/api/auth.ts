@@ -1,6 +1,8 @@
 // src/api/auth.ts
-export const GOOGLE_WEB_CLIENT_ID = '234622472801-808k3higs0vvq12hunck8pka4fsilb5p.apps.googleusercontent.com';
-export const GOOGLE_ANDROID_CLIENT_ID = '234622472801-cnpg133d0be04u81bj28p363bfhcgipt.apps.googleusercontent.com';
+import { Config } from '../constants/config';
+
+export const GOOGLE_WEB_CLIENT_ID = Config.GOOGLE_WEB_CLIENT_ID;
+export const GOOGLE_ANDROID_CLIENT_ID = Config.GOOGLE_ANDROID_CLIENT_ID;
 
 /**
  * Fetches the Google User Profile info using an access token.

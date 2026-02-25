@@ -1,42 +1,48 @@
-import { View, Text, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { System } from '../types';
-import { Wifi, WifiOff, AlertTriangle, AlertCircle, CheckCircle, ChevronRight } from 'lucide-react-native';
-import { useEffect, useRef } from 'react';
+import { ChevronRight } from 'lucide-react-native';
+import React, { useEffect } from 'react';
+import { STATUS_THEME } from '../constants/statusTheme';
+import { timeAgo } from '../utils/formatTime';
+import Animated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withRepeat,
+    withSequence,
+    withTiming,
+} from 'react-native-reanimated';
 
 interface SystemCardProps {
     system: System;
     onPress?: () => void;
 }
 
-const statusConfig: Record<string, { icon: any; color: string; bgColor: string; borderColor: string; label: string }> = {
-    OFFLINE: { icon: WifiOff, color: '#ef4444', bgColor: 'bg-red-500/10', borderColor: 'border-red-500/30', label: 'OFFLINE' },
-    ALERT: { icon: AlertCircle, color: '#ef4444', bgColor: 'bg-red-500/10', borderColor: 'border-red-500/30', label: 'ALERT' },
-    WARNING: { icon: AlertTriangle, color: '#f59e0b', bgColor: 'bg-amber-500/10', borderColor: 'border-amber-500/30', label: 'WARNING' },
-    INFO: { icon: AlertCircle, color: '#3b82f6', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500/30', label: 'INFO' },
-    HEALTHY: { icon: CheckCircle, color: '#10b981', bgColor: 'bg-emerald-500/10', borderColor: 'border-emerald-500/30', label: 'HEALTHY' },
-};
-
-export function SystemCard({ system, onPress }: SystemCardProps) {
-    const config = statusConfig[system.status] || statusConfig.INFO;
+export const SystemCard = React.memo(function SystemCard({ system, onPress }: SystemCardProps) {
+    const config = STATUS_THEME[system.status] || STATUS_THEME.INFO;
     const Icon = config.icon;
     const isCritical = system.status === 'ALERT' || system.status === 'OFFLINE';
-    const pulseAnim = useRef(new Animated.Value(1)).current;
+    const pulseOpacity = useSharedValue(1);
 
-    // Pulsing dot for critical statuses
+    // Pulsing dot for critical statuses — runs on UI thread via Reanimated
     useEffect(() => {
         if (isCritical) {
-            const pulse = Animated.loop(
-                Animated.sequence([
-                    Animated.timing(pulseAnim, { toValue: 0.2, duration: 1000, useNativeDriver: true }),
-                    Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
-                ])
+            pulseOpacity.value = withRepeat(
+                withSequence(
+                    withTiming(0.2, { duration: 1000 }),
+                    withTiming(1, { duration: 1000 }),
+                ),
+                -1, // infinite
             );
-            pulse.start();
-            return () => pulse.stop();
+        } else {
+            pulseOpacity.value = 1;
         }
     }, [isCritical]);
 
-    const timeSince = getTimeSince(system.lastSeen);
+    const pulseStyle = useAnimatedStyle(() => ({
+        opacity: pulseOpacity.value,
+    }));
+
+    const timeSince = timeAgo(system.lastSeen);
 
     return (
         <TouchableOpacity
@@ -51,7 +57,7 @@ export function SystemCard({ system, onPress }: SystemCardProps) {
                         <Icon color={config.color} size={20} />
                         {isCritical && (
                             <Animated.View
-                                style={{
+                                style={[pulseStyle, {
                                     position: 'absolute',
                                     top: -2,
                                     right: -2,
@@ -59,8 +65,7 @@ export function SystemCard({ system, onPress }: SystemCardProps) {
                                     height: 8,
                                     borderRadius: 4,
                                     backgroundColor: config.color,
-                                    opacity: pulseAnim,
-                                }}
+                                }]}
                             />
                         )}
                     </View>
@@ -82,14 +87,4 @@ export function SystemCard({ system, onPress }: SystemCardProps) {
             </View>
         </TouchableOpacity>
     );
-}
-
-function getTimeSince(dateStr: string): string {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'Just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
-}
+});

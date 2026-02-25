@@ -1,20 +1,11 @@
 import * as Notifications from 'expo-notifications';
 import { Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
+import { Config } from '../constants/config';
+import { configureNotificationHandler } from './notificationConfig';
 
-// === Configuration ===
-// Update this to your Cloud Run URL after deployment
-const SERVER_URL = 'https://smartescape-server-234622472801.us-east1.run.app';
-
-// Configure notification behavior
-Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-    }),
-});
+// Configure notification behavior (single source of truth)
+configureNotificationHandler();
 
 /**
  * Register for push notifications and get the device token.
@@ -69,7 +60,7 @@ export async function registerDeviceWithServer(
     accessToken: string
 ): Promise<boolean> {
     try {
-        const res = await fetch(`${SERVER_URL}/register`, {
+        const res = await fetch(`${Config.SERVER_URL}/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, pushToken, accessToken }),
@@ -97,7 +88,7 @@ export async function unregisterDeviceFromServer(
     pushToken?: string
 ): Promise<boolean> {
     try {
-        const res = await fetch(`${SERVER_URL}/unregister`, {
+        const res = await fetch(`${Config.SERVER_URL}/unregister`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, pushToken }),

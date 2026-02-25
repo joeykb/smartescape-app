@@ -80,12 +80,20 @@ function parseEmailToNotification(message: any): Notification {
     const systemId = extractSystemId(subject, bodyText);
     const status = extractStatus(subject, bodyText);
 
+    // Use subject as primary message (cleaned of system ID), fall back to body
+    const cleanSubject = subject
+        .replace(/SMART-ESC-\w+\s*/gi, '')
+        .replace(/^[\s\-–—:]+/, '')
+        .trim();
+
+    const displayMessage = cleanSubject || bodyText.trim().substring(0, 200) || subject;
+
     return {
         id: message.id,
         systemId,
         timestamp: new Date(dateStr).toISOString(),
         status,
-        message: bodyText.trim().substring(0, 200) || subject,
+        message: displayMessage,
         isRead: !(message.labelIds || []).includes('UNREAD'),
     };
 }
@@ -237,3 +245,97 @@ function createRawEmail(to: string, subject: string, body: string): string {
 
     return encoded;
 }
+
+/**
+ * Mark a Gmail message as read (acknowledge).
+ * Removes the UNREAD label from the message.
+ */
+export async function markMessageAsRead(accessToken: string, messageId: string): Promise<boolean> {
+    try {
+        const res = await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
+            {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    removeLabelIds: ['UNREAD'],
+                }),
+            }
+        );
+
+        if (!res.ok) {
+            console.error('[GmailService] Failed to mark as read:', await res.text());
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.error('[GmailService] Error marking as read:', e);
+        return false;
+    }
+}
+
+/**
+ * Mark a Gmail message as unread.
+ * Adds the UNREAD label to the message.
+ */
+export async function markMessageAsUnread(accessToken: string, messageId: string): Promise<boolean> {
+    try {
+        const res = await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
+            {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    addLabelIds: ['UNREAD'],
+                }),
+            }
+        );
+
+        if (!res.ok) {
+            console.error('[GmailService] Failed to mark as unread:', await res.text());
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.error('[GmailService] Error marking as unread:', e);
+        return false;
+    }
+}
+
+/**
+ * Archive a Gmail message (remove from inbox without deleting).
+ * Removes the INBOX label — the email stays in Gmail but leaves the inbox.
+ */
+export async function archiveMessage(accessToken: string, messageId: string): Promise<boolean> {
+    try {
+        const res = await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
+            {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    removeLabelIds: ['INBOX'],
+                }),
+            }
+        );
+
+        if (!res.ok) {
+            console.error('[GmailService] Failed to archive:', await res.text());
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.error('[GmailService] Error archiving:', e);
+        return false;
+    }
+}
+

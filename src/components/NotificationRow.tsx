@@ -1,40 +1,50 @@
-import { View, Text, TouchableOpacity } from 'react-native';
-import { Notification, NotificationStatus } from '../types';
-import { AlertCircle, AlertTriangle, WifiOff, Info, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react-native';
-import { useState } from 'react';
+import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Notification } from '../types';
+import { ChevronDown, ChevronUp, Check, Archive } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { STATUS_THEME } from '../constants/statusTheme';
+import { shortDateTime, fullDateTime } from '../utils/formatTime';
 
 interface NotificationRowProps {
     notification: Notification;
+    onAcknowledge?: (id: string) => Promise<void>;
+    onArchive?: (id: string) => Promise<void>;
+    onLongPress?: () => void;
+    onTap?: () => void;
 }
 
-const iconMap: Record<NotificationStatus, { icon: any; color: string }> = {
-    ALERT: { icon: AlertCircle, color: '#ef4444' },
-    OFFLINE: { icon: WifiOff, color: '#ef4444' },
-    WARNING: { icon: AlertTriangle, color: '#f59e0b' },
-    INFO: { icon: Info, color: '#3b82f6' },
-    HEALTHY: { icon: CheckCircle, color: '#10b981' },
-};
-
-export function NotificationRow({ notification }: NotificationRowProps) {
+export const NotificationRow = React.memo(function NotificationRow({ notification, onAcknowledge, onArchive, onLongPress, onTap }: NotificationRowProps) {
     const [expanded, setExpanded] = useState(false);
-    const config = iconMap[notification.status] || iconMap.INFO;
+    const [ackLoading, setAckLoading] = useState(false);
+    const [archiveLoading, setArchiveLoading] = useState(false);
+    const config = STATUS_THEME[notification.status] || STATUS_THEME.INFO;
     const Icon = config.icon;
     const isUnread = !notification.isRead;
     const count = notification.count || 1;
 
-    const timeStr = new Date(notification.timestamp).toLocaleString(undefined, {
-        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-    });
+    const timeStr = shortDateTime(notification.timestamp);
+    const fullDate = fullDateTime(notification.timestamp);
 
-    const fullDate = new Date(notification.timestamp).toLocaleString(undefined, {
-        weekday: 'short', year: 'numeric', month: 'long', day: 'numeric',
-        hour: '2-digit', minute: '2-digit', second: '2-digit',
-    });
+    const handleAcknowledge = async () => {
+        if (!onAcknowledge || ackLoading) return;
+        setAckLoading(true);
+        try { await onAcknowledge(notification.id); }
+        finally { setAckLoading(false); }
+    };
+
+    const handleArchive = async () => {
+        if (!onArchive || archiveLoading) return;
+        setArchiveLoading(true);
+        try { await onArchive(notification.id); }
+        finally { setArchiveLoading(false); }
+    };
 
     return (
         <TouchableOpacity
             className={`p-3 rounded-lg mb-2 border ${isUnread ? 'border-gray-700 bg-gray-900/80' : 'border-gray-800/30 bg-transparent'}`}
-            onPress={() => setExpanded(!expanded)}
+            onPress={onTap || (() => setExpanded(!expanded))}
+            onLongPress={onLongPress}
+            delayLongPress={300}
             activeOpacity={0.7}
         >
             {/* Header row */}
@@ -49,6 +59,11 @@ export function NotificationRow({ notification }: NotificationRowProps) {
                             {count > 1 && (
                                 <View className="ml-2 bg-gray-800 rounded-full px-2 py-0.5">
                                     <Text className="text-gray-300 text-xs font-black">×{count}</Text>
+                                </View>
+                            )}
+                            {notification.isArchived && (
+                                <View className="ml-2 bg-gray-800/50 rounded px-1.5 py-0.5 border border-gray-700/50">
+                                    <Text className="text-gray-500 text-xs font-black tracking-wider">ARCHIVED</Text>
                                 </View>
                             )}
                         </View>
@@ -84,6 +99,12 @@ export function NotificationRow({ notification }: NotificationRowProps) {
                                 Occurred {count} time{count !== 1 ? 's' : ''}
                             </Text>
                         )}
+                        {!isUnread && (
+                            <View className="ml-2 flex-row items-center">
+                                <Check color="#10b981" size={11} />
+                                <Text className="text-emerald-500 text-xs ml-1 font-bold">ACK</Text>
+                            </View>
+                        )}
                     </View>
 
                     <View className="mb-1.5">
@@ -100,8 +121,46 @@ export function NotificationRow({ notification }: NotificationRowProps) {
                         <Text className="text-gray-600 text-xs font-bold tracking-wider mb-0.5">DETAILS</Text>
                         <Text className="text-gray-300 text-sm leading-5">{notification.message}</Text>
                     </View>
+
+                    {/* Action buttons */}
+                    {(onAcknowledge || onArchive) && (
+                        <View className="flex-row mt-3 pt-3 border-t border-gray-800/50" style={{ gap: 8 }}>
+                            {onAcknowledge && isUnread && (
+                                <TouchableOpacity
+                                    onPress={handleAcknowledge}
+                                    disabled={ackLoading}
+                                    className="flex-1 flex-row items-center justify-center py-2 rounded-md bg-emerald-500/15 border border-emerald-500/30"
+                                >
+                                    {ackLoading ? (
+                                        <ActivityIndicator size="small" color="#10b981" />
+                                    ) : (
+                                        <>
+                                            <Check color="#10b981" size={14} />
+                                            <Text className="text-emerald-500 text-xs font-black tracking-wider ml-1.5">ACKNOWLEDGE</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            )}
+                            {onArchive && (
+                                <TouchableOpacity
+                                    onPress={handleArchive}
+                                    disabled={archiveLoading}
+                                    className="flex-1 flex-row items-center justify-center py-2 rounded-md bg-gray-800/50 border border-gray-700/50"
+                                >
+                                    {archiveLoading ? (
+                                        <ActivityIndicator size="small" color="#737373" />
+                                    ) : (
+                                        <>
+                                            <Archive color="#737373" size={14} />
+                                            <Text className="text-gray-400 text-xs font-black tracking-wider ml-1.5">ARCHIVE</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    )}
                 </View>
             )}
         </TouchableOpacity>
     );
-}
+});

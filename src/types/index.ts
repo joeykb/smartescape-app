@@ -7,6 +7,7 @@ export interface Notification {
     status: NotificationStatus;
     message: string;
     isRead: boolean;
+    isArchived?: boolean;
     count?: number; // Number of duplicate alerts grouped into this one
 }
 
