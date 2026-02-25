@@ -46,13 +46,16 @@ export async function registerForPushNotifications(): Promise<string | null> {
         });
     }
 
-    // Get the device push token (FCM for Android)
+    // Get the Expo push token (works on both iOS and Android)
     try {
-        const tokenData = await Notifications.getDevicePushTokenAsync();
-        console.log('[Push] Device token:', tokenData.data);
-        return tokenData.data as string;
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+        const tokenData = await Notifications.getExpoPushTokenAsync({
+            projectId,
+        });
+        console.log('[Push] Expo push token:', tokenData.data);
+        return tokenData.data;
     } catch (err) {
-        console.error('[Push] Failed to get device token:', err);
+        console.error('[Push] Failed to get push token:', err);
         return null;
     }
 }
