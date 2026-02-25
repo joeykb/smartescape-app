@@ -22,7 +22,7 @@ export const Config = {
 
     GOOGLE_IOS_CLIENT_ID:
         extra.googleIosClientId ??
-        '234622472801-hpn7gvvl127odbifdalm8uked1bhgjee.apps.googleusercontent.com',
+        '234622472801-hbd3ngbgpb375mlucq3av8ojo1roqih7.apps.googleusercontent.com',
 
     // SmartEscape Server
     SERVER_URL:
